@@ -10,6 +10,7 @@ import random
 import numpy as np
 import pandas as pd
 
+from xgboost import XGBClassifier
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.preprocessing import LabelEncoder
 from sklearn import naive_bayes
@@ -20,6 +21,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn import metrics
 from sklearn.utils import resample
+from sklearn.grid_search import GridSearchCV
 
 from matplotlib import pyplot as plt
 
@@ -44,27 +46,13 @@ def train_evaluate_model(model, X_train, X_test, y_train, y_test, class_labels, 
         plt.title("Rank ordering - {}".format(model_name))
         plt.savefig("rank_ordering_{}".format(model_name.replace(" ", "_").lower()))
         plt.show()
+        print("Gini: {}".format(2*metrics.roc_auc_score(y_test, map(lambda tup: tup[1], predictions_proba)) - 1))
 
     if hasattr(model, "feature_importances_"):
-        print "Feature importances", model.feature_importances_
+        print "Feature importances:", model.feature_importances_
 
-    # Calculate precision and recall
-    precision_scores_list = metrics.precision_score(y_test, predictions, average=None, labels=class_labels)
-    recall_scores_list = metrics.recall_score(y_test, predictions, average=None, labels=class_labels)
-
-    prec_recall_fscore = metrics.precision_recall_fscore_support(y_test, predictions)
-    report = metrics.classification_report(y_test, predictions)
-
-    print prec_recall_fscore
-    print report
-
-    precision_scores = dict(zip(class_labels, precision_scores_list))
-    recall_scores = dict(zip(class_labels, recall_scores_list))
-
-    print("Average precision=%.3f%%" %(100*metrics.precision_score(y_test, predictions, average='weighted')))
-    print("Average recall=%.3f%%" %(100*metrics.recall_score(y_test, predictions, average='weighted')))
+    print(metrics.classification_report(y_test, predictions))
     print(metrics.confusion_matrix(y_test, predictions))
-    print("Gini: {}".format(2*metrics.roc_auc_score(y_test, predictions) - 1))
 
     return model
 
@@ -96,7 +84,48 @@ def listify_vector(vec):
     else:
         return vec.tolist()
 
-# filename = "data/Twitter-hate_speech-labeled_data.csv"
+def convert_pay_his_to_int(pay_his_str):
+    try:
+        return int(pay_his_str)
+    except:
+        return 0
+
+def process_payment_history(pay_his_str):
+    pay_his_str = pay_his_str.strip('"""""""')
+    pay_his = [convert_pay_his_to_int(pay_his_str[3*i:3*(i+1)]) for i in range(len(pay_his_str)/3)]
+    pay_his_30dpd = [n > 30 for n in pay_his]
+    return pay_his_30dpd
+
+def get_months_last_30_plus(pay_his):
+    for i in range(1,len(pay_his)-1):
+        if pay_his[-i]:
+            return 1.0/i
+    else:
+        return 0# np.inf
+
+pad_zeros_left = lambda iterable, n: np.lib.pad(iterable, (n,0), 'constant', constant_values=(0,0))
+
+def get_history_avg_dpd_0_29_bucket(pay_his_list):
+    pay_his_list = [[int(value) for value in pay_his] for pay_his in pay_his_list]
+    max_his_len = max([len(pay_his) for pay_his in pay_his_list])
+
+    padded_pay_his_list = []
+    for pay_his in pay_his_list:
+        padded_pay_his_list.append(pad_zeros_left(pay_his, max_his_len - len(pay_his)))
+    summed_pay_his =  map(sum, zip(*padded_pay_his_list))
+    return sum(summed_pay_his)/float(max_his_len)
+
+def find_min(iterable):
+    int_iterable = [n for n in iterable if not np.isnan(n)]
+    if len(int_iterable) == 0:
+        return 0
+    else:
+        return min(int_iterable)
+
+def get_percentage_unsecured(iterable):
+    unsecured_types = [5, 6, 8, 9, 10, 12, 16, 35, 40, 41, 43, 80, 81, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 00, 98, 99]
+    bool_iterable = [int(n in unsecured_types) for n in iterable]
+    return sum(bool_iterable) / float(len(bool_iterable))
 
 account_train_filename = "test_data/raw_account_70_new.csv" 
 account_test_filename = "test_data/raw_account_30_new.csv"
@@ -104,46 +133,107 @@ account_test_filename = "test_data/raw_account_30_new.csv"
 train_filename = "test_data/raw_data_70_new.csv" 
 test_filename = "test_data/raw_data_30_new.csv"
 
-# train_filename = "test_data/raw_enquiry_70_new.csv" 
-# test_filename = "test_data/raw_enquiry_30_new.csv"
+enquiry_train_filename = "test_data/raw_enquiry_70_new.csv" 
+enquiry_test_filename = "test_data/raw_enquiry_30_new.csv"
 
 target_label = "Bad_label"
+
+features_to_use = ['payment_history_avg_dpd_0_29_bucket', 'total_diff_lastpaymt_opened_dt',
+'min_months_last_30_plus', 'utilisation_trend',
+'count_enquiry_recency_365', 'ratio_currbalance_creditlimit',
+'mean_diff_lastpaymt_opened_dt', 'mean_diff_open_enquiry_dt',   
+'payment_history_mean_length', 'max_freq_enquiry',
+'count_enquiry_recency_90', 'perc_unsecured_others']
 
 
 training_df = read_csv(train_filename)
 test_df = read_csv(test_filename)
 
-col_list = training_df.columns.tolist()
-
-
 account_train_df = read_csv(account_train_filename)
 account_test_df = read_csv(account_test_filename)
+
+enquiry_train_df = read_csv(enquiry_train_filename)
+enquiry_test_df = read_csv(enquiry_test_filename)
 
 convert_date_to_timestamp = lambda text: time.mktime(datetime.datetime.strptime(text, "%d-%b-%y").timetuple())
 
 # Dealing with nans
+enquiry_train_df = enquiry_train_df[pd.notnull(enquiry_train_df['enquiry_dt'])]
+enquiry_train_df = enquiry_train_df[pd.notnull(enquiry_train_df['dt_opened'])]
+enquiry_train_df = enquiry_train_df[pd.notnull(enquiry_train_df['enq_purpose'])]
+enquiry_test_df = enquiry_test_df[pd.notnull(enquiry_test_df['enquiry_dt'])]
+enquiry_test_df = enquiry_test_df[pd.notnull(enquiry_test_df['dt_opened'])]
+enquiry_test_df = enquiry_test_df[pd.notnull(enquiry_test_df['enq_purpose'])]
+
 account_train_df = account_train_df[pd.notnull(account_train_df['last_paymt_dt'])]
 account_train_df = account_train_df[pd.notnull(account_train_df['opened_dt'])]
 account_train_df = account_train_df[pd.notnull(account_train_df["cur_balance_amt"])]
 account_train_df = account_train_df[pd.notnull(account_train_df["creditlimit"])]
 account_train_df = account_train_df[pd.notnull(account_train_df["cashlimit"])]
+account_train_df = account_train_df[pd.notnull(account_train_df["paymenthistory1"])]
 
 account_test_df = account_test_df[pd.notnull(account_test_df['last_paymt_dt'])]
 account_test_df = account_test_df[pd.notnull(account_test_df['opened_dt'])]
 account_test_df = account_test_df[pd.notnull(account_test_df["cur_balance_amt"])]
 account_test_df = account_test_df[pd.notnull(account_test_df["creditlimit"])]
 account_test_df = account_test_df[pd.notnull(account_test_df["cashlimit"])]
+account_test_df = account_test_df[pd.notnull(account_test_df["paymenthistory1"])]
 
-account_train_df[['opened_dt', 'last_paymt_dt', 'cur_balance_amt', 'creditlimit', 'cashlimit', 'customer_no']].dropna(axis=0, inplace=True)
+# Feature bulding:
+account_train_df["paymenthistory1"] = account_train_df["paymenthistory1"].apply(process_payment_history)
+account_test_df["paymenthistory1"] = account_test_df["paymenthistory1"].apply(process_payment_history)
+
+#account_train_df[['opened_dt', 'last_paymt_dt', 'cur_balance_amt', 'creditlimit', 'cashlimit', 'customer_no']].dropna(axis=0, inplace=True)
 account_train_df['total_diff_lastpaymt_opened_dt'] = (account_train_df["opened_dt"].apply(convert_date_to_timestamp) - account_train_df["last_paymt_dt"].apply(convert_date_to_timestamp)) / 86400.0
 
-account_test_df[['opened_dt', 'last_paymt_dt', 'cur_balance_amt', 'creditlimit', 'cashlimit', 'customer_no']].dropna(axis=0, inplace=True)
+#account_test_df[['opened_dt', 'last_paymt_dt', 'cur_balance_amt', 'creditlimit', 'cashlimit', 'customer_no']].dropna(axis=0, inplace=True)
 account_test_df['total_diff_lastpaymt_opened_dt'] = (account_test_df["opened_dt"].apply(convert_date_to_timestamp) - account_test_df["last_paymt_dt"].apply(convert_date_to_timestamp)) / 86400.0
 
 training_df = pd.merge(account_train_df.groupby(account_train_df['customer_no'], as_index=False).sum(), training_df[[target_label, 'customer_no']], on='customer_no')
 training_df_means = account_train_df.groupby(account_train_df['customer_no'], as_index=False).mean()
 test_df = pd.merge(account_test_df.groupby(account_test_df['customer_no'], as_index=False).sum(), test_df[[target_label, 'customer_no']], on='customer_no')
 test_df_means = account_test_df.groupby(account_test_df['customer_no'], as_index=False).mean()
+
+temp_enquiry_train_df = enquiry_train_df['enquiry_dt'].apply(convert_date_to_timestamp)
+training_df['count_enquiry_recency_365'] = temp_enquiry_train_df.apply(lambda x: int(x>1420070400)).groupby(enquiry_train_df['customer_no']).aggregate(lambda x: sum(x))
+training_df['count_enquiry_recency_90'] = temp_enquiry_train_df.apply(lambda x: int(x>1443830400)).groupby(enquiry_train_df['customer_no']).aggregate(lambda x: sum(x))
+temp_enquiry_test_df = enquiry_test_df['enquiry_dt'].apply(convert_date_to_timestamp)
+test_df['count_enquiry_recency_365'] = temp_enquiry_test_df.apply(lambda x: int(x>1420070400)).groupby(enquiry_test_df['customer_no']).aggregate(lambda x: sum(x))
+test_df['count_enquiry_recency_90'] = temp_enquiry_test_df.apply(lambda x: int(x>1443830400)).groupby(enquiry_test_df['customer_no']).aggregate(lambda x: sum(x))
+
+temp_enquiry_train_df = enquiry_train_df['dt_opened'].apply(convert_date_to_timestamp) - enquiry_train_df['enquiry_dt'].apply(convert_date_to_timestamp)
+training_df['mean_diff_open_enquiry_dt'] = temp_enquiry_train_df.groupby(enquiry_train_df['customer_no']).mean()
+temp_enquiry_test_df = enquiry_test_df['dt_opened'].apply(convert_date_to_timestamp) - enquiry_test_df['enquiry_dt'].apply(convert_date_to_timestamp)
+test_df['mean_diff_open_enquiry_dt'] = temp_enquiry_test_df.groupby(enquiry_test_df['customer_no']).mean()
+
+temp_enquiry_train_df = enquiry_train_df.groupby(enquiry_train_df['customer_no']).aggregate(lambda x: list(x))
+training_df['max_freq_enquiry'] = temp_enquiry_train_df['enq_purpose'].apply(lambda x: Counter(x).most_common(1)[0][0])
+temp_enquiry_test_df = enquiry_test_df.groupby(enquiry_test_df['customer_no']).aggregate(lambda x: list(x))
+test_df['max_freq_enquiry'] = temp_enquiry_test_df['enq_purpose'].apply(lambda x: Counter(x).most_common(1)[0][0])
+training_df['perc_unsecured_others'] = temp_enquiry_train_df['enq_purpose'].apply(get_percentage_unsecured)
+test_df['perc_unsecured_others'] = temp_enquiry_test_df['enq_purpose'].apply(get_percentage_unsecured)
+
+temp_account_train_df = account_train_df['paymenthistory1'].apply(get_months_last_30_plus)
+temp_account_train_df = temp_account_train_df.groupby(account_train_df['customer_no']).aggregate(lambda x: find_min(x))
+training_df['min_months_last_30_plus'] = temp_account_train_df
+temp_account_test_df = account_test_df['paymenthistory1'].apply(get_months_last_30_plus)
+temp_account_test_df = temp_account_test_df.groupby(account_test_df['customer_no']).aggregate(lambda x: find_min(x))
+test_df['min_months_last_30_plus'] = temp_account_test_df
+
+temp_account_train_df = account_train_df[['paymenthistory1', 'customer_no']]
+temp_account_train_df = temp_account_train_df.groupby(account_train_df['customer_no']).aggregate(lambda x: sum([len(e) for e in x]) / float(len(x)))
+training_df['payment_history_mean_length'] = temp_account_train_df['paymenthistory1']
+temp_account_test_df = account_test_df[['paymenthistory1', 'customer_no']]
+temp_account_test_df = temp_account_test_df.groupby(account_test_df['customer_no']).aggregate(lambda x: sum([len(e) for e in x]) / float(len(x)))
+test_df['payment_history_mean_length'] = temp_account_test_df['paymenthistory1']
+
+temp_account_train_df = account_train_df['paymenthistory1'].groupby(account_train_df['customer_no']).aggregate(lambda x: get_history_avg_dpd_0_29_bucket(x))
+training_df['payment_history_avg_dpd_0_29_bucket'] = temp_account_train_df
+temp_account_test_df = account_test_df['paymenthistory1'].groupby(account_test_df['customer_no']).aggregate(lambda x: get_history_avg_dpd_0_29_bucket(x))
+test_df['payment_history_avg_dpd_0_29_bucket'] = temp_account_test_df
+
+training_df['mean_diff_lastpaymt_opened_dt'] = training_df_means['total_diff_lastpaymt_opened_dt']
+test_df['mean_diff_lastpaymt_opened_dt'] = test_df_means['total_diff_lastpaymt_opened_dt']
 
 training_df['utilisation_trend'] = training_df['cur_balance_amt'] / training_df['creditlimit'] / training_df_means['cur_balance_amt'] * (training_df_means['creditlimit']+training_df_means['cashlimit'])
 training_df['ratio_currbalance_creditlimit'] = training_df['cur_balance_amt'] / training_df['creditlimit']
@@ -160,50 +250,16 @@ test_df.dropna(subset=['utilisation_trend', 'ratio_currbalance_creditlimit', 'ac
 
 training_df['amt_past_due'].fillna(value=0, inplace=True)
 test_df['amt_past_due'].fillna(value=0, inplace=True)
+training_df['actualpaymentamount'].fillna(value=0, inplace=True)
+test_df['actualpaymentamount'].fillna(value=0, inplace=True)
+training_df['paymentfrequency'].fillna(value=0, inplace=True)
+test_df['paymentfrequency'].fillna(value=0, inplace=True)
 
 training_df.dropna(axis=0, inplace=True)
 test_df.dropna(axis=0, inplace=True)
 
-
-"""
-The commented code below is what I used to prepare data
-for model training, when using all* features from raw_data_70_new and raw_data_30_new
-(* -> some features were removed because of very low support)
-"""
-
-# features_support = []
-# for i in range(49):
-#     features_support.append((i*500, len(training_df.dropna(axis=1, thresh=i*500).columns)))
-
-# import matplotlib.pyplot as plt
-# plt.scatter(*zip(*features_support))
-# plt.title("Number of features vs no. of customers with each feature")
-# plt.savefig("feature_support.png")
-
-
-# import scipy.sparse as sp
-# vect = CountVectorizer(ngram_range=(1, 1))
-
-# # training_df = training_df.dropna(axis=1, thresh=20000)
-# cols_to_drop = ["feature_75", "feature_70", "feature_63", "feature_21", "opened_dt", "entry_time", "feature_1", "feature_24", "feature_16", "feature_15", "feature_54", "feature_2"]
-# cols_to_drop = [col for col in cols_to_drop if col in training_df.columns]
-# training_df.drop(cols_to_drop, axis=1, inplace=True)
-# test_df.drop(cols_to_drop, axis=1, inplace=True)
-
-
-# NUMERICS = ['int16', 'int32', 'int64', 'float16', 'float32', 'float64']
-# num_training_df = training_df.select_dtypes(include=NUMERICS).fillna(method='pad')
-# nonnum_training_df = training_df.select_dtypes(exclude=NUMERICS).fillna(method='pad')
-# nonnum_training_df, vectorisers = vectorise(nonnum_training_df)
-# training_df = pd.concat([num_training_df, nonnum_training_df], axis=1)
-
-# num_test_df = test_df.select_dtypes(include=NUMERICS).fillna(method='ffill')
-# nonnum_test_df = test_df.select_dtypes(exclude=NUMERICS).fillna(method='ffill')#.apply(lambda col: vect.fit_transform(col))
-# nonnum_test_df, vectorisers = vectorise(nonnum_test_df, fit=False, vectorisers=vectorisers)
-# test_df = pd.concat([num_test_df, nonnum_test_df], axis=1)
-# test_df.drop([col for col in test_df.columns if col not in training_df.columns], axis=1, inplace=True)
-
-
+training_df = training_df[features_to_use+[target_label]]
+test_df = test_df[features_to_use+[target_label]]
 
 used_features = training_df.columns.tolist()
 used_features.remove(target_label)
@@ -212,46 +268,27 @@ used_features.remove(target_label)
 df_majority = training_df[training_df[target_label]==0]
 df_minority = training_df[training_df[target_label]==1]
 
-# # Downsample majority class
-# df_majority_downsampled = resample(df_majority, 
-#                                  replace=False,     # sample without replacement
-#                                  n_samples=1004,     # to get a number closer to the minority size
-#                                  random_state=1345678) # reproducible results
-# training_df_downsampled = pd.concat([df_majority_downsampled, df_minority])
-
 # Upsample minority class
 df_minority_upsampled = resample(df_minority,
                                  replace=True,     # sample with replacement
-                                 n_samples=22892,    # to match majority class
+                                 n_samples=len(df_majority),    # to match majority class
                                  random_state=123) # reproducible results
  
 # Combine majority class with upsampled minority class
 training_df = pd.concat([df_majority, df_minority_upsampled])
 
 
-print "Model features", training_df.drop(target_label, axis=1).columns
+print "Model features:", training_df.drop(target_label, axis=1).columns
 X_train = training_df.drop(target_label, axis=1).values.tolist()
 X_test = test_df.drop(target_label, axis=1).values.tolist()
-X_train = map(listify_vector, X_train)
-X_test = map(listify_vector, X_test)
+X_train = np.array(map(listify_vector, X_train))
+X_test = np.array(map(listify_vector, X_test))
 
 y_train = training_df[target_label].tolist()
 y_test = test_df[target_label].tolist()
 
 class_frequency = Counter(y_train)
 class_labels = list(set(y_train))
-
-# # Build a forest and compute the feature importances
-forest = ExtraTreesClassifier(n_estimators=250,
-                              random_state=126452341)
-# forest = RandomForestClassifier(n_estimators=250, random_state=0)
-
-train_evaluate_model(forest, X_train, X_test, y_train, y_test, class_labels, class_frequency, "ExtraTreesClassifier")
-
-importances = forest.feature_importances_
-std = np.std([tree.feature_importances_ for tree in forest.estimators_], axis=0)
-indices = np.argsort(importances)[::-1]
-
 
 # Make random predictions for benchmark
 rand_predictions = [class_labels[random.randint(0,1)] for label in y_test]
@@ -287,12 +324,35 @@ print("Precision=%.3f%%" %(100*precision))
 print("Recall=%.3f%%" %(100*recall))
 print(metrics.confusion_matrix(y_test, rand_predictions))
 
+random_state = 123
 models = [("Naive Bayes", naive_bayes.BernoulliNB),
-        ("Decision tree", DecisionTreeClassifier),
-        ("Random forest", lambda: RandomForestClassifier(n_estimators=250)),
-        ("Linear SVC", LinearSVC), ("Logistic Regression", LogisticRegression)]
+        ("Decision tree", lambda: DecisionTreeClassifier(class_weight='balanced', random_state=random_state)),
+        ("Extra Trees", lambda: ExtraTreesClassifier(n_estimators=30, max_depth=2, max_features=3,
+                              random_state=random_state)),
+        ("Random forest", lambda: RandomForestClassifier(n_estimators=250, max_depth=2, max_features=1, min_samples_split=90, min_samples_leaf=11, class_weight='balanced', random_state=random_state)),
+        ("XGBoost", lambda: XGBClassifier(n_estimators=105, max_depth=2, learning_rate=0.01, seed=random_state, nthread=4)),
+        ("Linear SVC", LinearSVC), ("Logistic Regression", lambda: LogisticRegression(class_weight='balanced'))]
 
 # Using the same train-test split, evaluate performance of several models
 for model_name, model in models:
     print("\nTraining a %s" %model_name)
-    train_evaluate_model(model(), X_train, X_test, y_train, y_test, class_labels, class_frequency, model_name)
+    tuned_parameters = {
+                        "Random forest" : [{'n_estimators': [250],
+                                     'max_depth': [2], 'max_features': [1],
+                                     'min_samples_leaf': [11],
+                                     'min_samples_split': [70, 80, 90]}],
+                        "XGBoost" : [{'n_estimators': [105],
+                                     'max_depth': [2], 'learning_rate':[0.01],
+                                     'subsample': [0.75]
+                                    }]
+                        }
+    do_grid_search = False
+    if do_grid_search:
+        grid = GridSearchCV(model(), tuned_parameters[model_name], cv=5)
+        train_evaluate_model(grid, X_train, X_test, y_train, y_test, class_labels, class_frequency, model_name)
+        for params, mean_score, scores in grid.grid_scores_:
+            print("%0.3f (+/-%0.03f) for %r"
+                  % (mean_score, scores.std() / 2, params))
+        print grid.best_params_
+    else:
+        train_evaluate_model(model(), X_train, X_test, y_train, y_test, class_labels, class_frequency, model_name)

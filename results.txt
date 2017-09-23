@@ -1,129 +1,137 @@
-Model features: Index([u'customer_no', u'acct_type', u'owner_indic', u'high_credit_amt',
-       u'amt_past_due', u'paymentfrequency', u'actualpaymentamount',
-       u'total_diff_lastpaymt_opened_dt', u'utilisation_trend',
-       u'ratio_currbalance_creditlimit'],
+$ python analysis.py
+/usr/local/lib/python2.7/dist-packages/sklearn/cross_validation.py:41: DeprecationWarning: This module was deprecated in version 0.18 in favor of the model_selection module into which all the refactored classes and functions are moved. Also note that the interface of the new CV iterators are different from that of this module. This module will be removed in 0.20.
+  "This module will be removed in 0.20.", DeprecationWarning)
+/usr/local/lib/python2.7/dist-packages/sklearn/grid_search.py:42: DeprecationWarning: This module was deprecated in version 0.18 in favor of the model_selection module into which all the refactored classes and functions are moved. This module will be removed in 0.20.
+  DeprecationWarning)
+/usr/lib/python2.7/dist-packages/matplotlib/font_manager.py:273: UserWarning: Matplotlib is building the font cache using fc-list. This may take a moment.
+  warnings.warn('Matplotlib is building the font cache using fc-list. This may take a moment.')
+sys:1: DtypeWarning: Columns (12,20,63) have mixed types. Specify dtype option on import or set low_memory=False.
+sys:1: DtypeWarning: Columns (18) have mixed types. Specify dtype option on import or set low_memory=False.
+Model features: Index([u'payment_history_avg_dpd_0_29_bucket',
+       u'total_diff_lastpaymt_opened_dt', u'min_months_last_30_plus',
+       u'utilisation_trend', u'count_enquiry_recency_365',
+       u'ratio_currbalance_creditlimit', u'mean_diff_lastpaymt_opened_dt',
+       u'mean_diff_open_enquiry_dt', u'payment_history_mean_length',
+       u'max_freq_enquiry', u'count_enquiry_recency_90',
+       u'perc_unsecured_others'],
       dtype='object')
-
-For benchmark:
-
 Predicting randomly
-Precision=91.422%
-Recall=50.948%
-[[2158 2072]
- [ 101   99]]
-
+Precision=91.029%
+Recall=49.748%
+[[1512 1518]
+ [  77   67]]
 Predicting randomly (with existing class frequencies)
-Precision=91.238%
-Recall=91.196%
-[[4034  196]
- [ 194    6]]
-
+Precision=91.281%
+Recall=91.714%
+[[2906  124]
+ [ 139    5]]
+/usr/local/lib/python2.7/dist-packages/sklearn/metrics/classification.py:1135: UndefinedMetricWarning: Precision is ill-defined and being set to 0.0 in labels with no predicted samples.
+  'precision', 'predicted', average, warn_for)
 Predicting most common class
-Precision=0.204%
-Recall=4.515%
-[[   0 4230]
- [   0  200]]
+Precision=91.132%
+Recall=95.463%
+[[3030    0]
+ [ 144    0]]
 
-
-
-Training ExtraTreesClassifier
-rank_ordering [0.065462753950338598, 0.040632054176072234, 0.049661399548532728, 0.040632054176072234, 0.045146726862302484, 0.040632054176072234, 0.03160270880361174, 0.04740406320541761, 0.045146726862302484, 0.045146726862302484]
-Feature importances [ 0.19979088  0.02112805  0.02113469  0.1552871   0.00244703  0.02214378
-  0.16267498  0.1645526   0.06657012  0.18427076]
-
-(array([ 0.95485327,  0.        ]), array([ 1.,  0.]), array([ 0.97690531,  0.        ]), array([4230,  200]))
-             precision    recall  f1-score   support
-
-          0       0.95      1.00      0.98      4230
-          1       0.00      0.00      0.00       200
-
-avg / total       0.91      0.95      0.93      4430
-
-Average precision=91.174%
-Average recall=95.485%
-[[4230    0]
- [ 200    0]]
-Gini: 0.0
-
-Training a Naive Bayes
-rank_ordering [0.022573363431151242, 0.054176072234762979, 0.06320541760722348, 0.040632054176072234, 0.049661399548532728, 0.065462753950338598, 0.04740406320541761, 0.040632054176072234, 0.040632054176072234, 0.027088036117381489]
-(array([ 0.        ,  0.04514673]), array([ 0.,  1.]), array([ 0.        ,  0.08639309]), array([4230,  200]))
-             precision    recall  f1-score   support
-
-          0       0.00      0.00      0.00      4230
-          1       0.05      1.00      0.09       200
-
-avg / total       0.00      0.05      0.00      4430
-
-Average precision=0.204%
-Average recall=4.515%
-[[   0 4230]
- [   0  200]]
-Gini: 0.0
-
-Training a Decision tree
-rank_ordering [0.040632054176072234, 0.038374717832957109, 0.058690744920993229, 0.04740406320541761, 0.04740406320541761, 0.051918735891647853, 0.056433408577878104, 0.042889390519187359, 0.038374717832957109, 0.029345372460496615]
-Feature importances [ 0.19712126  0.00200541  0.00815877  0.17083264  0.00026969  0.00731256
-  0.15171454  0.18466331  0.13664463  0.1412772 ]
-(array([ 0.95562339,  0.06432749]), array([ 0.96217494,  0.055     ]), array([ 0.95888797,  0.05929919]), array([4230,  200]))
-             precision    recall  f1-score   support
-
-          0       0.96      0.96      0.96      4230
-          1       0.06      0.06      0.06       200
-
-avg / total       0.92      0.92      0.92      4430
-
-Average precision=91.538%
-Average recall=92.122%
-[[4070  160]
- [ 189   11]]
-Gini: 0.0171749408983
 
 Training a Random forest
-rank_ordering [0.06320541760722348, 0.054176072234762979, 0.036117381489841983, 0.033860045146726865, 0.042889390519187359, 0.024830699774266364, 0.076749435665914217, 0.049661399548532728, 0.033860045146726865, 0.036117381489841983]
-Feature importances [ 0.17769404  0.0129544   0.01339203  0.15415209  0.00081075  0.01156858
-  0.15741654  0.16094389  0.15064621  0.16042146]
-(array([ 0.95480226,  0.        ]), array([ 0.99881797,  0.        ]), array([ 0.97631427,  0.        ]), array([4230,  200]))
+rank_ordering [0.081761006289308172, 0.059748427672955975, 0.0440251572327044, 0.037735849056603772, 0.047318611987381701, 0.044164037854889593, 0.037854889589905363, 0.041009463722397478, 0.022082018927444796, 0.037854889589905363]
+Gini: 0.159591584158
+Feature importances: [ 0.05966831  0.14010798  0.05796505  0.11225694  0.04811209  0.11616583
+  0.11919482  0.08827544  0.05345756  0.05235604  0.07026937  0.08217059]
              precision    recall  f1-score   support
 
-          0       0.95      1.00      0.98      4230
-          1       0.00      0.00      0.00       200
+          0       0.96      0.65      0.78      3030
+          1       0.06      0.45      0.10       144
 
-avg / total       0.91      0.95      0.93      4430
+avg / total       0.92      0.65      0.75      3174
 
-Average precision=91.170%
-Average recall=95.372%
-[[4225    5]
- [ 200    0]]
-Gini: -0.00118203309693
+[[1984 1046]
+ [  79   65]]
+
+Training a XGBoost
+rank_ordering [0.081761006289308172, 0.062893081761006289, 0.0440251572327044, 0.028301886792452831, 0.05362776025236593, 0.044164037854889593, 0.056782334384858045, 0.025236593059936908, 0.022082018927444796, 0.034700315457413249]
+Gini: 0.159465529886
+Feature importances: [ 0.          0.38412699  0.          0.05714286  0.12380952  0.30476192
+  0.08253969  0.0031746   0.          0.          0.          0.04444445]
+             precision    recall  f1-score   support
+
+          0       0.96      0.73      0.83      3030
+          1       0.07      0.40      0.11       144
+
+avg / total       0.92      0.72      0.80      3174
+
+[[2225  805]
+ [  87   57]]
+
+
+
+
+Training a Naive Bayes
+rank_ordering [0.031446540880503145, 0.034591194968553458, 0.066037735849056603, 0.04716981132075472, 0.063091482649842268, 0.037854889589905363, 0.037854889589905363, 0.05993690851735016, 0.050473186119873815, 0.025236593059936908]
+Gini: 0.00987577924459
+             precision    recall  f1-score   support
+
+          0       0.96      0.29      0.45      3030
+          1       0.05      0.73      0.09       144
+
+avg / total       0.92      0.31      0.43      3174
+
+[[ 886 2144]
+ [  39  105]]
+
+Training a Decision tree
+rank_ordering [0.037735849056603772, 0.034591194968553458, 0.04716981132075472, 0.066037735849056603, 0.050473186119873815, 0.047318611987381701, 0.063091482649842268, 0.034700315457413249, 0.044164037854889593, 0.028391167192429023]
+Gini: -0.0154427942794
+Feature importances: [ 0.00518461  0.22470951  0.00320617  0.12167889  0.06001973  0.1237479
+  0.12302916  0.16177569  0.07496765  0.00978519  0.00360567  0.08828983]
+             precision    recall  f1-score   support
+
+          0       0.95      0.95      0.95      3030
+          1       0.03      0.03      0.03       144
+
+avg / total       0.91      0.91      0.91      3174
+
+[[2878  152]
+ [ 139    5]]
+
+Training a Extra Trees
+rank_ordering [0.081761006289308172, 0.053459119496855348, 0.04716981132075472, 0.037735849056603772, 0.028391167192429023, 0.022082018927444796, 0.031545741324921134, 0.047318611987381701, 0.056782334384858045, 0.047318611987381701]
+Gini: 0.0613975980931
+Feature importances: [ 0.07883978  0.07674332  0.14309818  0.03360644  0.01677828  0.17170768
+  0.05108941  0.06282599  0.03723292  0.08012905  0.12929074  0.11865821]
+             precision    recall  f1-score   support
+
+          0       0.96      0.54      0.69      3030
+          1       0.05      0.52      0.09       144
+
+avg / total       0.92      0.54      0.67      3174
+
+[[1643 1387]
+ [  69   75]]
 
 Training a Linear SVC
-(array([ 0.95447078,  0.03550296]), array([ 0.96146572,  0.03      ]), array([ 0.95795548,  0.03252033]), array([4230,  200]))
+/usr/local/lib/python2.7/dist-packages/sklearn/metrics/classification.py:1135: UndefinedMetricWarning: Precision and F-score are ill-defined and being set to 0.0 in labels with no predicted samples.
+  'precision', 'predicted', average, warn_for)
              precision    recall  f1-score   support
 
-          0       0.95      0.96      0.96      4230
-          1       0.04      0.03      0.03       200
+          0       0.00      0.00      0.00      3030
+          1       0.05      1.00      0.09       144
 
-avg / total       0.91      0.92      0.92      4430
+avg / total       0.00      0.05      0.00      3174
 
-Average precision=91.298%
-Average recall=91.941%
-[[4067  163]
- [ 194    6]]
-Gini: -0.00853427895981
+[[   0 3030]
+ [   0  144]]
 
 Training a Logistic Regression
-rank_ordering [0.045146726862302484, 0.045146726862302484, 0.03160270880361174, 0.051918735891647853, 0.038374717832957109, 0.045146726862302484, 0.040632054176072234, 0.060948081264108354, 0.04740406320541761, 0.045146726862302484]
-(array([ 0.97674419,  0.04558011]), array([ 0.01985816,  0.99      ]), array([ 0.03892493,  0.08714789]), array([4230,  200]))
+rank_ordering [0.04716981132075472, 0.040880503144654086, 0.04716981132075472, 0.034591194968553458, 0.034700315457413249, 0.072555205047318619, 0.047318611987381701, 0.034700315457413249, 0.063091482649842268, 0.031545741324921134]
+Gini: -0.0038137147048
              precision    recall  f1-score   support
 
-          0       0.98      0.02      0.04      4230
-          1       0.05      0.99      0.09       200
+          0       0.95      0.99      0.97      3030
+          1       0.00      0.00      0.00       144
 
-avg / total       0.93      0.06      0.04      4430
+avg / total       0.91      0.95      0.93      3174
 
-Average precision=93.471%
-Average recall=6.366%
-[[  84 4146]
- [   2  198]]
-Gini: 0.00985815602837
+[[3012   18]
+ [ 144    0]]
